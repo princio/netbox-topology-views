@@ -1,13 +1,15 @@
 
 # Developing
 
-> ~/netbox-topology-views/netbox_topology_views/static_dev> yarn run bundle
+1. ~/netbox-topology-views/netbox_topology_views/static_dev> yarn run bundle
 
-> ~/netbox-topology-views> sudo /opt/netbox/venv/bin/pip install -e .
+2. ~/netbox-topology-views> sudo /opt/netbox/venv/bin/pip install -e .
 
-> \> sudo /opt/netbox/venv/bin/python3 /opt/netbox/netbox/manage.py collectstatic --no-input
+3. \> sudo /opt/netbox/venv/bin/python3 /opt/netbox/netbox/manage.py collectstatic --no-input
 
-> \> sudo systemctl restart netbox netbox-rq
+4. \> sudo systemctl restart netbox netbox-rq
+
+**Se modifico solo python basta (4), se modifico _js_ devo farli tutti.**
 
 ## Come funziona
 
@@ -57,6 +59,20 @@ Plottando per  `Site Osimo`:
 ### title: div
 
 E' un div contenente solamente il titolo che viene utilizzato da _vis_ per creare il tooltip in caso di _hover_.
+
+## Ottenere le VLAN
+
+Innanzitutto per ottenere tutti gli oggetti si usano delle classi Singletone sembrerebbe.
+
+Per ottenere tutti i devices: `Device.objects.all()`.
+
+Dal codice sorgente sembra che si possa anche fare `Device.objects.filter()`, ma il plugin mi sembra funzionare diversamente (la usa ma solo per i non Devices).
+
+Per ottere le vlan bisogna chiamare per ogni device `vc_interfaces()`, che riporta una list di tutte le interface associate a quel device.
+
+Poi per ogni _interface_ ci sono due campi, _untagged\_vlan_ e _tagget\_vlan_.
+
+Entrambi i campi sono due classi, entrambe `ipam.VLAN`.
 
 # Netbox Topology Views Plugin
 

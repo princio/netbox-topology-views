@@ -92,6 +92,8 @@ def create_node(device, save_coords, circuit = None, powerpanel = None, powerfee
         if device.device_role.color != "":
             node["color.border"] = "#" + device.device_role.color
     
+    node['untagged_vlan'] = [ i.untagged_vlan.name for i in device.vc_interfaces() if i.untagged_vlan is not None]
+    
     dev_title = "<table><tbody> %s</tbody></table>" % (node_content)
 
     node["title"] = dev_title
@@ -205,7 +207,7 @@ def get_topology_data(queryset, hide_unconnected, save_coords, show_circuit, sho
                     if circuit.circuit.id not in nodes_circuits:
                         nodes_circuits[circuit.circuit.id] = circuit.circuit
 
-       
+
         for d in nodes_circuits.values():
             nodes.append(create_node(d, save_coords, circuit=True))
 
@@ -373,7 +375,7 @@ class TopologyHomeView(PermissionRequiredMixin, View):
             return HttpResponseRedirect(request.path + "?" + query_string)
 
         return render(request, "netbox_topology_views/index.html" , {
-             "filter_form": DeviceFilterForm(request.GET, label_suffix=""),
-             "topology_data": json.dumps(topo_data)
+                "filter_form": DeviceFilterForm(request.GET, label_suffix=""),
+                "topology_data": json.dumps(topo_data)
             }
         )
