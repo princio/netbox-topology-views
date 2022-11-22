@@ -1,3 +1,63 @@
+
+# Developing
+
+> ~/netbox-topology-views/netbox_topology_views/static_dev> yarn run bundle
+
+> ~/netbox-topology-views> sudo /opt/netbox/venv/bin/pip install -e .
+
+> \> sudo /opt/netbox/venv/bin/python3 /opt/netbox/netbox/manage.py collectstatic --no-input
+
+> \> sudo systemctl restart netbox netbox-rq
+
+## Come funziona
+
+Prima di tutto si passa per _views.py_, che carica i dati da Netbox e li preprocessa.
+
+L'ultima funzione chiamata in _views.py_ e' `render`, una funzione importata da Django, classicamente utilizzata nel pattern MVC.
+
+Questi dati, fetchati e preprocessati in _views.py_ vengono poi _"plottati"_ in index.html, all'interno di un Element `<script>` sotto forma di formato json.
+
+In index.html, alla fine, viene caricato lo script `app.js`, il quale altro non e' che la versione compilata di `home.js`, attraverso il comando `yarn bundle` ed il file `bundle.js` presenti entrambi in _static\_dev_.
+
+In `home.js` credo avvenga la magia, il quale utilizza il plugin js chiamato _"vis-data"_ e _"vis-network"_.
+
+In pratica, tutto ruota attorno a `topology_data`:
+- _views.py_: fetching e preprocessing.
+- _index.html_: plotting con il template rendering di Django.
+- _home.js_: utilizzo di `topology_data` con il plugin _"vis"_.
+
+## Plugin _Vis_
+Plottando per  `Site Osimo`:
+- Oggetto 1, che sarebbe un cavo:
+```
+{
+    "id": 1,
+    "from": 7,
+    "to": 3,
+    "title": div
+}
+```
+
+- Oggetto 2, che sarebbe _Centro Stella Osimo, quindi un device (_router_):
+```
+{
+    "id": 3,
+    "image": "../../static/netbox_topology_views/img/router.png",
+    "color.border": "#009688",
+    "title": div,
+    "name": "Centro Stella Osimo",
+    "label": "Centro Stella Osimo",
+    "shape": "image",
+    "physics": false,
+    "x": -708,
+    "y": -55
+}
+```
+
+### title: div
+
+E' un div contenente solamente il titolo che viene utilizzato da _vis_ per creare il tooltip in caso di _hover_.
+
 # Netbox Topology Views Plugin
 
 ![Version](https://img.shields.io/pypi/v/netbox-topology-views) ![Downloads](https://img.shields.io/pypi/dm/netbox-topology-views)
@@ -6,9 +66,11 @@ Create topology views/maps from your devices in netbox.
 The connections are based on the cables you created in netbox.
 Support to filter on name, site, tag and device role.
 
+
 ## Preview
 
 ![preview image](doc/img/preview_3.1.jpeg?raw=true "preview")
+
 
 ## Install
 
@@ -31,13 +93,13 @@ PLUGINS = ["netbox_topology_views"]
 
 First run `source /opt/netbox/venv/bin/activate` to enter the Python virtual environment.
 
-
 Then run 
 ```bash
 cd /opt/netbox/netbox
 pip3 install netbox-topology-views
 python3 manage.py collectstatic --no-input
 ```
+
 
 ### Versions
 
@@ -50,6 +112,7 @@ python3 manage.py collectstatic --no-input
 | >= 2.10.0 | >= v0.5.0 |
 | < 2.10.0 | =< v0.4.10 |
 
+
 ### Custom field: coordinates
 
 There is also support for custom fields.
@@ -60,6 +123,7 @@ The coordinates are stored as: "X;Y".
 
 Please read the "Configure" chapter to set the `allow_coordinates_saving` option to True.
 You might also set the `always_save_coordinates` option to True.
+
 
 ## Configure
 
@@ -85,22 +149,24 @@ PLUGINS_CONFIG = {
 | preselected_tags      | '[]' | The name of tags you want to preload  |
 | draw_default_layout | False | (bool) Set to True if you want to load draw the topology on the initial load (when you go to the topology plugin page) |
 
+
 ### Custom Images
 
 You upload you own custom images to the netbox static dir (`static/netbox_topology_views/img/`).
 These images need to be named after de device role slug and have the .png format/extension.
 If you add your own image you also need to add the slug to the `device_img` setting.
 
+
 ## Use
 
 Go to the plugins tab in the navbar and click topology or go to `$NETBOX_URL/plugins/netbox_topology_views/` to view your topologies
+
 
 ### Update
 
 Run `pip install netbox-topology-views --upgrade` in your venv.
 
 Run `python3 manage.py collectstatic --no-input`
-
 
 Clear you browser cache.
 
@@ -113,7 +179,8 @@ To view `/plugins/topology-views/` you need the following permissions:
  + extras | tag | can view tag
  + dcim | device role | can view device role
 
- ## Icons info
+
+## Icons info
 
 Power icons created by [Freepik - Flaticon](https://www.flaticon.com/free-icons/power).
 
