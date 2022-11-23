@@ -11,10 +11,15 @@ from .filters import DeviceFilterSet
 
 import json
 
+from dcim.filtersets import DeviceRoleFilterSet
 from dcim.models import Device, CableTermination, DeviceRole,  Interface, FrontPort, RearPort, PowerPanel,  PowerFeed
 from circuits.models import CircuitTermination
 from wireless.models import WirelessLink
 from extras.models import Tag
+from ipam.models import VLAN
+
+from typing import cast, List
+
 
 supported_termination_types = ["interface", "front port", "rear port", "power outlet", "power port", "console port", "console server port"]
 
@@ -116,7 +121,7 @@ def create_node(device, save_coords, circuit = None, powerpanel = None, powerfee
                 node["physics"] = True
     return node
 
-def create_edge(edge_id, termination_a, termination_b, circuit = None, cable = None, wireless = None, power=None):
+def create_edge(edge_id, termination_a, termination_b, circuit = None, cable = None, wireless = None, power=None, type_=''):
     cable_a_name = "device A name unknown" if termination_a["termination_name"] is None else termination_a["termination_name"]
     cable_a_dev_name = "device A name unknown" if termination_a["termination_device_name"] is None else termination_a["termination_device_name"]
     cable_b_name= "device A name unknown" if termination_b["termination_name"] is None else termination_b["termination_name"]
@@ -126,6 +131,7 @@ def create_edge(edge_id, termination_a, termination_b, circuit = None, cable = N
     edge["id"] = edge_id
     edge["from"] = termination_a["device_id"]
     edge["to"] = termination_b["device_id"]
+    edge["type"] = type_
 
     if circuit is not None:
         edge["dashes"] = True
@@ -153,6 +159,8 @@ def create_circuit_termination(termination):
     if isinstance(termination, Interface) or isinstance(termination, FrontPort) or isinstance(termination, RearPort):
         return { "termination_name": termination.name, "termination_device_name": termination.device.name, "device_id": termination.device.id }
     return None
+
+
 
 def get_topology_data(queryset, hide_unconnected, save_coords, show_circuit, show_power):
     nodes_devices = {}
@@ -191,7 +199,7 @@ def get_topology_data(queryset, hide_unconnected, save_coords, show_circuit, sho
             if bool(termination_a) and bool(termination_b):
                 circuit_model = {"provider_name": circuit.circuit.provider.name}
                 edge_ids += 1
-                edges.append(create_edge(edge_id=edge_ids,circuit=circuit_model, termination_a=termination_a, termination_b=termination_b))
+                edges.append(create_edge(edge_id=edge_ids,circuit=circuit_model, termination_a=termination_a, termination_b=termination_b, type_='circuit'))
 
                 circuit_has_connections = False
                 for termination in [circuit.cable.a_terminations[0], circuit.cable.b_terminations[0]]:
@@ -213,6 +221,7 @@ def get_topology_data(queryset, hide_unconnected, save_coords, show_circuit, sho
 
     links = CableTermination.objects.filter( Q(_device_id__in=device_ids) ).select_related("termination_type")
     wlan_links = WirelessLink.objects.filter( Q(_interface_a_device_id__in=device_ids) & Q(_interface_b_device_id__in=device_ids))
+    
     
     if show_power:
         power_panels = PowerPanel.objects.filter( Q (site_id__in=site_ids))
@@ -236,7 +245,7 @@ def get_topology_data(queryset, hide_unconnected, save_coords, show_circuit, sho
                 edge_ids += 1
                 termination_a = { "termination_name": power_feed.power_panel.name, "termination_device_name": "", "device_id": "p{}".format(power_feed.power_panel.id) }
                 termination_b = { "termination_name": power_feed.name, "termination_device_name": power_link_name, "device_id": "f{}".format(power_feed.id) }
-                edges.append(create_edge(edge_id=edge_ids, termination_a=termination_a, termination_b=termination_b, power=True))
+                edges.append(create_edge(edge_id=edge_ids, termination_a=termination_a, termination_b=termination_b, power=True, type_='power'))
 
                 if power_feed.cable_id is not None:
                     if power_feed.cable.id not in cable_ids:
@@ -291,7 +300,7 @@ def get_topology_data(queryset, hide_unconnected, save_coords, show_circuit, sho
                 else:
                     termination_a = cable_ids[link.cable.id]["A"]
                
-                edges.append(create_edge(edge_id=edge_ids, cable=link.cable, termination_a=termination_a, termination_b=termination_b))
+                edges.append(create_edge(edge_id=edge_ids, cable=link.cable, termination_a=termination_a, termination_b=termination_b, type_='link'))
 
     for wlan_link in wlan_links:
         if wlan_link.interface_a.device.id not in nodes_devices:
@@ -304,7 +313,7 @@ def get_topology_data(queryset, hide_unconnected, save_coords, show_circuit, sho
         wireless = {"ssid": wlan_link.ssid }
 
         edge_ids += 1
-        edges.append(create_edge(edge_id=edge_ids, termination_a=termination_a, termination_b=termination_b,wireless=wireless))
+        edges.append(create_edge(edge_id=edge_ids, termination_a=termination_a, termination_b=termination_b,wireless=wireless, type_='wlan'))
 
     for qs_device in queryset:
         if qs_device.id not in nodes_devices and not hide_unconnected:
@@ -318,6 +327,95 @@ def get_topology_data(queryset, hide_unconnected, save_coords, show_circuit, sho
     results["nodes"] = nodes 
     results["edges"] = edges
     return results
+
+def get_routers_and_firewall(topo_data):
+    roles = DeviceRole.objects.all()
+    filterset = DeviceRoleFilterSet
+    router_role = filterset( {'name': ['Router']}, roles).qs[0]
+    firewall_role = filterset( {'name': ['Firewall']}, roles).qs[0]
+
+    routers = Device.objects.filter(device_role_id=router_role.id)
+    firewalls = Device.objects.filter(device_role_id=firewall_role.id)
+
+    devices = {
+        'routers': cast(List[Device], routers),
+        'firewalls': cast(List[Device], firewalls)
+    }
+
+    __devices = {
+        'routers': [],
+        'firewalls': []
+    }
+
+    __vlans = {}
+
+    for type_device in devices:
+        for device in devices[type_device]:
+            device_vlans = cast(List[VLAN], [ i.untagged_vlan for i in device.vc_interfaces() if i.untagged_vlan is not None])
+            __device = {
+                'id': device.id,
+                'name': device.name,
+                'label': device.name,
+                'vlans': [ vlan.name for vlan in device_vlans ],
+                'shape': 'hexagon',
+                'color': { 'routers': 'blue', 'firewalls': 'red'}[type_device],
+                'size': 20,
+                'font': {
+                    'color': 'black'
+                }
+            }
+            __devices[type_device].append(__device)
+
+            for vlan in device_vlans:
+                # __vlans.append({
+                #     'name': device.name,
+                #     'label': device.name,
+                #     'group': device.name,
+                #     'shape':  { 'routers': 'circle', 'firewalls': 'star'}[type_device],
+                # })
+                if vlan.name not in __vlans:
+                    __vlans[vlan.name] = []
+                __vlans[vlan.name].append(__device)
+
+    def random_color():
+        import random
+        r = random.randint(0,255)
+        g = random.randint(0,255)
+        b = random.randint(0,255)
+        return f'rgb({r}, {g}, {b})'
+
+    vlan_colors = { vlan_name: random_color() for vlan_name in __vlans }
+
+    
+    vlan_edges = []
+    for vlan_name in __vlans:
+        tmp = [ v for v in __vlans[vlan_name]]
+        for __device in __vlans[vlan_name]:
+            for __device2 in tmp:
+                if __device != __device2:
+                    vlan_edges.append({
+                        'from': __device['id'],
+                        'title': vlan_name,
+                        'label': vlan_name,
+                        'color': vlan_colors[vlan_name],
+                        'to': __device2['id'],
+                        'type': 'link'
+                    })
+            tmp.remove(__device)
+
+
+
+    topo_data['devices_all'] = __devices["firewalls"] + __devices['routers']
+    topo_data['devices'] = __devices
+    topo_data['vlans'] = __vlans
+    topo_data['vlan_edges'] = vlan_edges
+    topo_data['vlan_colors'] = vlan_colors
+
+
+
+
+    
+    pass
 
 class TopologyHomeView(PermissionRequiredMixin, View):
     permission_required = ("dcim.view_site", "dcim.view_device")
@@ -373,6 +471,8 @@ class TopologyHomeView(PermissionRequiredMixin, View):
                 q["save_coords"] = "on"
             query_string = q.urlencode()
             return HttpResponseRedirect(request.path + "?" + query_string)
+
+        get_routers_and_firewall(topo_data)
 
         return render(request, "netbox_topology_views/index.html" , {
                 "filter_form": DeviceFilterForm(request.GET, label_suffix=""),

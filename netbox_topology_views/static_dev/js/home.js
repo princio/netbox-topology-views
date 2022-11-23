@@ -67,11 +67,13 @@ export function htmlTitle(html) {
 };
 
 export function addEdge(item) {
+    console.log('edge', item);
     item.title = htmlTitle(item.title);
     edges.add(item);
 };
 
 export function addNode(item) {
+    console.log('node', item);
     item.title = htmlTitle(item.title);
     nodes.add(item);
 }
@@ -107,10 +109,15 @@ export function handleLoadData() {
         graph = null;
         nodes = new DataSet();
         edges = new DataSet();
+
         graph = new Network(container, { nodes: nodes, edges: edges }, options);
         
-        topology_data.edges.forEach(addEdge);
-        topology_data.nodes.forEach(addNode);
+        // topology_data.edges.forEach(addEdge);
+        // topology_data.nodes.forEach(addNode);
+        // topology_data.devices.routers.forEach(addNode);
+        // topology_data.devices.firewalls.forEach(addNode);
+        topology_data.devices_all.forEach(addNode);
+        topology_data.vlan_edges.forEach(addEdge);
 
         graph.fit();
         canvas = document.getElementById('visgraph').getElementsByTagName('canvas')[0];
