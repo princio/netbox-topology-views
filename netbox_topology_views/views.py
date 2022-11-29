@@ -1,3 +1,4 @@
+import math
 from django.shortcuts import render
 from django.db.models import Q
 from django.views.generic import View
@@ -17,13 +18,13 @@ from dcim.models import Device, CableTermination, DeviceRole,  Interface, FrontP
 from circuits.models import CircuitTermination
 from wireless.models import WirelessLink
 from extras.models import Tag
-from ipam.models import VLAN
+from ipam.models import VLAN, IPAddress, Prefix
 
 import logging
 
 from typing import cast, List
 
-logger = logging.getLogger(f"django.request")
+logger = logging.getLogger(f"django.template")
 
 supported_termination_types = ["interface", "front port", "rear port", "power outlet", "power port", "console port", "console server port"]
 
@@ -352,14 +353,32 @@ def get_routers_and_firewall(topo_data):
     }
 
     __vlans = {}
+    
+    def get_parent_prefixes(ip: IPAddress):
+        return [ { 'name': str(p), 'utilization': round(p.get_utilization(), 2) } for p in Prefix.objects.filter(
+            vrf=ip.vrf,
+            prefix__net_contains_or_equals=str(ip.address.ip)
+        )]
+        
 
     for type_device in devices:
         for device in devices[type_device]:
-            device_vlans = cast(List[VLAN], [ i.untagged_vlan for i in device.vc_interfaces() if i.untagged_vlan is not None])
+            interfaces = cast(List[Interface], [ i for i in device.vc_interfaces() ])
+            __interfaces = []
+            if len(interfaces) > 0:
+                __interfaces = [{
+                    'vlan': str(i.untagged_vlan),
+                    'prefixes': get_parent_prefixes(ip)
+                }
+                    for i in device.vc_interfaces() if i.untagged_vlan is not None for ip in i.ip_addresses.all()
+                ]
+
+            device_vlans = cast(List[VLAN], [ i.untagged_vlan for i in interfaces if i.untagged_vlan is not None])
             __device = {
                 'id': device.id,
                 'name': device.name,
                 'label': device.name,
+                'interaces': __interfaces,
                 'vlans': [ vlan.name for vlan in device_vlans ],
                 'shape': 'hexagon',
                 'color': { 'routers': 'blue', 'firewalls': 'red'}[type_device],
@@ -380,6 +399,27 @@ def get_routers_and_firewall(topo_data):
                 if vlan.name not in __vlans:
                     __vlans[vlan.name] = []
                 __vlans[vlan.name].append(__device)
+
+            pass
+        pass
+
+    # logger.debug(__devices)
+
+    ### Get Prefixes with Routers
+    ### Get Prefixes with Routers
+    ### Get Prefixes with Routers
+
+    prefixes = Prefix.objects.all()
+    prefix_children = ([
+        [str(p), str(ip.address), str(ip.status), str(ip.assigned_object)] for p in prefixes for ip in p.get_child_ips()
+    ])
+    logger.debug([
+        [str(p), str(ip.address), str(ip.status), str(ip.assigned_object), ip.description ] for p in prefixes for ip in p.get_child_ips()
+    ])
+
+    ### Get Prefixes with Routers
+    ### Get Prefixes with Routers
+    ### Get Prefixes with Routers
 
     def random_color():
         import random
