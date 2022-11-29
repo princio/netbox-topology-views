@@ -14,13 +14,19 @@
 
 {% block controls %}
   <div class="controls">
-    	<div class="control-group">
+    <div class="control-group">
 			{% block extra_controls %}{% endblock %}
 			<a id="btnDownloadImage" class="btn btn-sm btn-info" href="#">
-				<i class="mdi mdi-download"></i>
-				Download
+				<i class="mdi mdi-download">Download</i>
+				
 			</a>
-    	</div>
+			<a id="btnPhysics" class="btn btn-sm btn-info" href="#" data-on="true">
+				Physics is On
+			</a>
+			<a id="btnFit" class="btn btn-sm btn-info" href="#">
+				Fit
+			</a>
+    </div>
 	</div>
 {% endblock controls %}
 
@@ -55,8 +61,6 @@
 
         <script type="text/javascript">
           var topology_data = {{ topology_data | safe }};
-
-          console.log(topology_data);
         </script>
       </div>
 

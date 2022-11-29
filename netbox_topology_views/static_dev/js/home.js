@@ -2,15 +2,32 @@ import { DataSet } from "vis-data/esnext";
 import { Network } from "vis-network/esnext";
 //import 'vis-util';
 
-
+let physics_enabled = true;
 var graph = null;
 var container = null;
 var downloadButton = null;
+var fitButton = null;
+var physicsButton = null;
 const MIME_TYPE = "image/png";
 var canvas = null;
 var csrftoken = null;
 var nodes = new DataSet();
 var edges = new DataSet();
+const physics = {
+    enabled: physics_enabled,
+    stabilization: {
+        enabled: true,
+    },
+    maxVelocity: 20,
+    barnesHut: {
+        centralGravity: 0.6,
+        gravitationalConstant: -5000,
+        springLength: 110, // 95
+        springConstant: 0.02, // 0.04
+        avoidOverlap: 1
+    },
+    solver: 'barnesHut',
+};
 var options = {
     interaction: {
         hover: true,
@@ -32,13 +49,8 @@ var options = {
         font: {
             face: 'helvetica',
         },
-        shadow: {
-            enabled: true
-        }
     },
-    physics: {
-        solver: 'forceAtlas2Based'
-    }
+    physics: physics
 };
 var coord_save_checkbox = null;
 var htmlElement = null;
@@ -67,13 +79,12 @@ export function htmlTitle(html) {
 };
 
 export function addEdge(item) {
-    console.log('edge', item);
     item.title = htmlTitle(item.title);
+    item.shadow = { enabled: false };
     edges.add(item);
 };
 
 export function addNode(item) {
-    console.log('node', item);
     item.title = htmlTitle(item.title);
     nodes.add(item);
 }
@@ -83,6 +94,8 @@ export function iniPlotboxIndex() {
     container = document.getElementById('visgraph');
     htmlElement = document.getElementsByTagName("html")[0];
     downloadButton = document.getElementById('btnDownloadImage');
+    physicsButton = document.getElementById('btnPhysics');
+    fitButton = document.getElementById('btnFit');
     handleLoadData();
     btnFullView = document.getElementById('btnFullView');
     coord_save_checkbox = document.getElementById('id_save_coords');
@@ -123,6 +136,41 @@ export function handleLoadData() {
         canvas = document.getElementById('visgraph').getElementsByTagName('canvas')[0];
 
         downloadButton.onclick = function(e) { performGraphDownload(); return false; };
+        
+        fitButton.onclick = function(e) {
+            graph.fit({ animation: false });
+            return false;
+        };
+        
+        
+        physicsButton.onclick = function(e) {
+            if( physicsButton.dataset.on == 'true') {
+                console.log('true-btn: ' + physicsButton.dataset.on);
+                graph.setOptions({ physics: false });
+                physicsButton.dataset.on = 'false'
+                physicsButton.setHTML('Physics is Off')
+                physics_enabled = false;
+            }
+            else {
+                console.log('false-btn: ' + physicsButton.dataset.on);
+                graph.setOptions({ physics: physics });
+                physicsButton.dataset.on = 'true'
+                physicsButton.setHTML('Physics is On')
+                physics_enabled = true;
+            }
+
+            return false;
+        };
+
+        graph.on("dragStart", function (params) {
+            if (physics_enabled) {
+                graph.setOptions({
+                    physics: {
+                        enabled: true
+                    }
+                })
+            }
+        })
 
         graph.on("dragEnd", function (params) {
             dragged = this.getPositions(params.nodes);
@@ -152,6 +200,14 @@ export function handleLoadData() {
                         xhr.send(data);
                     }
                 }
+            }
+
+            if (physics_enabled) {
+                graph.setOptions({
+                    physics: {
+                        enabled: true
+                    }
+                })
             }
         });
 

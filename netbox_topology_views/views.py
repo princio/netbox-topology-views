@@ -6,6 +6,7 @@ from django.conf import settings
 from django.http import QueryDict
 from django.http import HttpResponseRedirect
 
+
 from .forms import DeviceFilterForm
 from .filters import DeviceFilterSet
 
@@ -18,8 +19,11 @@ from wireless.models import WirelessLink
 from extras.models import Tag
 from ipam.models import VLAN
 
+import logging
+
 from typing import cast, List
 
+logger = logging.getLogger(f"django.request")
 
 supported_termination_types = ["interface", "front port", "rear port", "power outlet", "power port", "console port", "console server port"]
 
@@ -404,6 +408,8 @@ def get_routers_and_firewall(topo_data):
             tmp.remove(__device)
 
 
+    if topo_data is None:
+        topo_data = {}
 
     topo_data['devices_all'] = __devices["firewalls"] + __devices['routers']
     topo_data['devices'] = __devices
