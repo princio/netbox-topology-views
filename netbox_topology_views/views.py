@@ -45,7 +45,6 @@ def get_parent_prefix(ip) -> Union[Prefix,None]:
         )]
     return None if len(prefixes) == 0 else cast(Prefix, prefixes[0])
 
-
 def get_device_ip(ip: IPAddress):
     aot = ip.assigned_object_type
     if aot is None:
@@ -134,10 +133,12 @@ def nodes(use_coordinates):
             logger.warn(f'Prefix for vlan ({vlan.vid}) has {len(prefixes)} length')
             continue
         prefix = prefixes[0]
+        
         ips = cast(List[IPAddress], list(prefix.get_child_ips().all()))
 
         devices = [ get_device_ip(ip) for ip in ips ]
         devices = [ device for device in devices if device is not None ]
+        devices = [*set(devices)]
 
         ids = [ add_prefix(prefix) ] + [ add_device(device) for device in devices ]
 
@@ -534,91 +535,8 @@ def get_topology_data(queryset, hide_unconnected, save_coords, use_coordinates, 
     return results
 
 def get_routers_and_firewall(topo_data, use_coordinates):
-    roles = DeviceRole.objects.all()
-    filterset = DeviceRoleFilterSet
-    router_role = filterset( {'name': ['Router']}, roles).qs[0]
-    firewall_role = filterset( {'name': ['Firewall']}, roles).qs[0]
-
-    routers = Device.objects.filter(device_role_id=router_role.id)
-    firewalls = Device.objects.filter(device_role_id=firewall_role.id)
-
-    devices = {
-        'routers': cast(List[Device], routers),
-        'firewalls': cast(List[Device], firewalls)
-    }
-
-    __devices = {
-        'routers': [],
-        'firewalls': []
-    }
-
-    __vlans = {}
-
-    for type_device in devices:
-        for device in devices[type_device]:
-            device_vlans = cast(List[VLAN], [ i.untagged_vlan for i in device.vc_interfaces() if i.untagged_vlan is not None])
-            __device = {
-                'id': device.id,
-                'name': device.name,
-                'label': device.name,
-                'vlans': [ vlan.name for vlan in device_vlans ],
-                'shape': 'hexagon',
-                'color': { 'routers': 'blue', 'firewalls': 'red'}[type_device],
-                'size': 20,
-                'font': {
-                    'color': 'black'
-                }
-            }
-            __devices[type_device].append(__device)
-
-            for vlan in device_vlans:
-                # __vlans.append({
-                #     'name': device.name,
-                #     'label': device.name,
-                #     'group': device.name,
-                #     'shape':  { 'routers': 'circle', 'firewalls': 'star'}[type_device],
-                # })
-                if vlan.name not in __vlans:
-                    __vlans[vlan.name] = []
-                __vlans[vlan.name].append(__device)
-
-    def random_color():
-        import random
-        r = random.randint(0,255)
-        g = random.randint(0,255)
-        b = random.randint(0,255)
-        return f'rgb({r}, {g}, {b})'
-
-    vlan_colors = { vlan_name: random_color() for vlan_name in __vlans }
-
-    
-    vlan_edges = []
-    for vlan_name in __vlans:
-        tmp = [ v for v in __vlans[vlan_name]]
-        for __device in __vlans[vlan_name]:
-            for __device2 in tmp:
-                if __device != __device2:
-                    vlan_edges.append({
-                        'from': __device['id'],
-                        'title': vlan_name,
-                        'label': vlan_name,
-                        'color': vlan_colors[vlan_name],
-                        'to': __device2['id'],
-                        'type': 'link'
-                    })
-            tmp.remove(__device)
-
-
     if topo_data is None:
         topo_data = {}
-
-
-
-    topo_data['devices_all'] = __devices["firewalls"] + __devices['routers']
-    topo_data['devices'] = __devices
-    topo_data['vlans'] = __vlans
-    topo_data['vlan_edges'] = vlan_edges
-    topo_data['vlan_colors'] = vlan_colors
 
     data = nodes(use_coordinates)
 
