@@ -20,11 +20,11 @@ const physics = {
     },
     maxVelocity: 20,
     barnesHut: {
-        centralGravity: 0.6,
-        gravitationalConstant: -5000,
-        springLength: 110, // 95
-        springConstant: 0.02, // 0.04
-        avoidOverlap: 1
+    //     centralGravity: 0.6,
+        gravitationalConstant: -2000,
+    //     springLength: 50, // 95
+    //     springConstant: 0.02, // 0.04
+    //     avoidOverlap: 1
     },
     solver: 'barnesHut',
 };
@@ -169,8 +169,6 @@ export function handleLoadData() {
         // topology_data.devices_all.forEach(addNode);
         // topology_data.vlan_edges.forEach(addEdge);
 
-        console.log(topology_data.edges2);
-
         topology_data.nodes2.forEach((n) => addNode(n, undefined));
         topology_data.edges2.forEach(addEdge);
 
@@ -181,8 +179,8 @@ export function handleLoadData() {
         
         fitButton.onclick = function(e) {
             graph.setOptions({ physics: false });
-            topology_data.nodes2.forEach((n) => smallNode(graph, n));
-            graph.redraw();
+            // topology_data.nodes2.forEach((n) => smallNode(graph, n));
+            // graph.redraw();
             graph.fit({ animation: false });
             graph.setOptions({ physics: true });
             return false;
@@ -215,7 +213,9 @@ export function handleLoadData() {
         };
 
         graph.on("dragStart", function (params) {
-            graph.updateEdge(params.edges[0], { smooth: false });
+            for (const edge of params.edges) {
+                graph.updateEdge(edge, { smooth: false });
+            }
             if (physics_enabled) {
                 
                 graph.setOptions({

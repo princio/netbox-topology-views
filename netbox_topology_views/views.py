@@ -59,7 +59,7 @@ def get_device_ip(ip: IPAddress):
 
 
 def nodes(use_coordinates):
-    COLORS = { 'Router': 'blue', 'Firewall': 'red', 'Prefix': 'grey'}
+    COLORS = { 'Router': 'blue', 'Firewall': 'red', 'Prefix': 'black'}
     SHAPES = { 'Router': 'hexagon', 'Firewall': 'hexagon', 'Prefix': 'circle'}
     nodes = {}
     edges = []
@@ -72,7 +72,7 @@ def nodes(use_coordinates):
                     cords =  obj.custom_field_data["coordinates"].split(";")
                     node["x"] = int(cords[0])
                     node["y"] = int(cords[1])
-                    node["physics"] = True
+                    node["physics"] = not use_coordinates
         return node
 
     def add_device(device: Device) -> str:
@@ -87,7 +87,7 @@ def nodes(use_coordinates):
             'shape': SHAPES[device.device_role.name],
             'color': COLORS[device.device_role.name],
             'size': 20,
-            'physics': True,
+            'physics': not use_coordinates,
             'font': {
                 'color': 'black'
             }
@@ -106,6 +106,7 @@ def nodes(use_coordinates):
             'shape': SHAPES['Prefix'],
             'color': COLORS['Prefix'],
             'size': 5,
+            'physics': not use_coordinates,
             'font': {
                 'color': 'black'
             }
