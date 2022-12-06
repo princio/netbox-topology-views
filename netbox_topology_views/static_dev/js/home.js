@@ -44,7 +44,7 @@ var options = {
         },
     },
     edges: {
-        length: 100,
+        length: 50,
         width: 2,
         font: {
             face: 'helvetica',
@@ -79,14 +79,31 @@ export function htmlTitle(html) {
 };
 
 export function addEdge(item) {
-    item.title = htmlTitle(item.title);
+    item.title = htmlTitle(item.name);
     item.shadow = { enabled: false };
+    item.label = `${item.vid}`;
     edges.add(item);
 };
 
-export function addNode(item) {
-    item.title = htmlTitle(item.title);
-    nodes.add(item);
+export function addNode(node, opt) {
+    const item = JSON.parse(JSON.stringify(node));
+    item.title = htmlTitle(item.name);
+    if (opt && opt.small) {
+        if (item.type === 'prefix') {
+            item.color = 'black';
+            item.label = undefined;
+            item.size = 5;
+        }
+    }
+    nodes.update(item);
+}
+
+export function smallNode(graph, node) {
+    graph.updateClusteredNode(node.id, {
+        color: 'black',
+        label: undefined,
+        size: 5
+    })
 }
 
 export function iniPlotboxIndex() {
@@ -96,6 +113,7 @@ export function iniPlotboxIndex() {
     downloadButton = document.getElementById('btnDownloadImage');
     physicsButton = document.getElementById('btnPhysics');
     fitButton = document.getElementById('btnFit');
+    cooButton = document.getElementById('btnCoo');
     handleLoadData();
     btnFullView = document.getElementById('btnFullView');
     coord_save_checkbox = document.getElementById('id_save_coords');
@@ -111,6 +129,25 @@ export function performGraphDownload() {
     tempDownloadLink.click();
     document.body.removeChild(tempDownloadLink);
 };
+
+const saveCoord = async (data) => {
+    return new Promise((resolve) => {
+        var url = "/api/plugins/netbox_topology_views/save-coords/save_coords/";
+        var xhr = new XMLHttpRequest();
+        xhr.open("PATCH", url);
+        xhr.setRequestHeader('X-CSRFToken', csrftoken );
+        xhr.setRequestHeader("Accept", "application/json");
+        xhr.setRequestHeader("Content-Type", "application/json");
+
+        xhr.onreadystatechange = function () {
+        if (xhr.readyState === 4) {
+            console.log(xhr.status);
+            resolve(xhr.status);
+        }};
+
+        xhr.send(JSON.stringify(data));
+    });
+}
 
 export function handleLoadData() {
     if (topology_data !== null) {
@@ -129,8 +166,13 @@ export function handleLoadData() {
         // topology_data.nodes.forEach(addNode);
         // topology_data.devices.routers.forEach(addNode);
         // topology_data.devices.firewalls.forEach(addNode);
-        topology_data.devices_all.forEach(addNode);
-        topology_data.vlan_edges.forEach(addEdge);
+        // topology_data.devices_all.forEach(addNode);
+        // topology_data.vlan_edges.forEach(addEdge);
+
+        console.log(topology_data.edges2);
+
+        topology_data.nodes2.forEach((n) => addNode(n, undefined));
+        topology_data.edges2.forEach(addEdge);
 
         graph.fit();
         canvas = document.getElementById('visgraph').getElementsByTagName('canvas')[0];
@@ -138,10 +180,20 @@ export function handleLoadData() {
         downloadButton.onclick = function(e) { performGraphDownload(); return false; };
         
         fitButton.onclick = function(e) {
+            graph.setOptions({ physics: false });
+            topology_data.nodes2.forEach((n) => smallNode(graph, n));
+            graph.redraw();
             graph.fit({ animation: false });
+            graph.setOptions({ physics: true });
             return false;
         };
         
+        cooButton.onclick = function(e) {
+            reqs = topology_data.nodes2.map((n) => ({...n, ...graph.getPosition(n.id)}))
+            console.log(reqs);
+            reqs.forEach(async (req) => await saveCoord(req));
+            return false;
+        };
         
         physicsButton.onclick = function(e) {
             if( physicsButton.dataset.on == 'true') {
@@ -163,10 +215,12 @@ export function handleLoadData() {
         };
 
         graph.on("dragStart", function (params) {
+            graph.updateEdge(params.edges[0], { smooth: false });
             if (physics_enabled) {
+                
                 graph.setOptions({
                     physics: {
-                        enabled: true
+                        enabled: false
                     }
                 })
             }
@@ -177,8 +231,8 @@ export function handleLoadData() {
 
             if (coord_save_checkbox.checked) {
                 if (Object.keys(dragged).length !== 0) {
-                    for (dragged_device in dragged) {
-                        var node_id = dragged_device;
+                    for (dragged_id in dragged) {
+                        const node = topology_data.nodes2.filter((n) => n.id === dragged_id)[0]
 
                         var url = "/api/plugins/netbox_topology_views/save-coords/save_coords/";
                         var xhr = new XMLHttpRequest();
@@ -191,11 +245,12 @@ export function handleLoadData() {
                         if (xhr.readyState === 4) {
                             console.log(xhr.status);
                         }};
-    
-                        var data = JSON.stringify({
-                            'node_id': node_id,
-                            'x': dragged[node_id].x,
-                            'y': dragged[node_id].y});
+
+                        const data = JSON.stringify({
+                            ...node,
+                            x: dragged[dragged_id].x,
+                            y: dragged[dragged_id].y
+                        });
     
                         xhr.send(data);
                     }

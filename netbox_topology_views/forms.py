@@ -21,7 +21,7 @@ allow_coordinates_saving = bool(settings.PLUGINS_CONFIG["netbox_topology_views"]
 class DeviceFilterForm(TenancyFilterForm, NetBoxModelFilterSetForm):
     model = Device
     fieldsets = (
-        (None, ('q', 'hide_unconnected', 'save_coords', 'show_circuit', 'show_power' ,)),
+        (None, ('q', 'hide_unconnected', 'save_coords', 'show_circuit', 'show_power', 'use_coordinates')),
         (None, ('tenant_group_id', 'tenant_id',)),
         (None, ('region_id', 'site_id', 'location_id', 'rack_id')),
         (None, ('device_role_id','id','status', )),
@@ -95,6 +95,11 @@ class DeviceFilterForm(TenancyFilterForm, NetBoxModelFilterSetForm):
         label=_("Save Coordinates"),
         required=False,
         disabled=(not allow_coordinates_saving)
+    )
+    use_coordinates = forms.BooleanField(
+        label=_("Use Coordinates"),
+        required=False,
+        initial=True
     )
     status = MultipleChoiceField(
         choices=DeviceStatusChoices,

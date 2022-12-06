@@ -46,83 +46,117 @@ def get_parent_prefix(ip) -> Union[Prefix,None]:
     return None if len(prefixes) == 0 else cast(Prefix, prefixes[0])
 
 
-class Edge():
-    def __init__(self, vlan: VLAN) -> None:
-        self.vlan = vlan
+def get_device_ip(ip: IPAddress):
+    aot = ip.assigned_object_type
+    if aot is None:
+        return None
+    if aot.model != 'interface':
+        logger.warn(f'IP {ip} have not assigned an "interface" but a {aot.model}.')
+        return None
+    interface = cast(Interface, ip.assigned_object)
+    device = interface.device
+    return device
+    
+
+
+def nodes(use_coordinates):
+    COLORS = { 'Router': 'blue', 'Firewall': 'red', 'Prefix': 'grey'}
+    SHAPES = { 'Router': 'hexagon', 'Firewall': 'hexagon', 'Prefix': 'circle'}
+    nodes = {}
+    edges = []
+    def add_coordinates(node, obj: Union[Prefix, Device]):
+        if not use_coordinates:
+            return node
+        if "coordinates" in obj.custom_field_data:
+            if obj.custom_field_data["coordinates"] is not None:
+                if ";" in obj.custom_field_data["coordinates"]:
+                    cords =  obj.custom_field_data["coordinates"].split(";")
+                    node["x"] = int(cords[0])
+                    node["y"] = int(cords[1])
+                    node["physics"] = True
+        return node
+
+    def add_device(device: Device) -> str:
+        id_ = f'device_{device.pk}'
+        node = {
+            'id': id_,
+            'netbox_id': device.pk,
+            'n_edges': 0,
+            'name': device.name,
+            'label': device.name,
+            'type': 'device',
+            'shape': SHAPES[device.device_role.name],
+            'color': COLORS[device.device_role.name],
+            'size': 20,
+            'physics': True,
+            'font': {
+                'color': 'black'
+            }
+        }
+        nodes[id_] = add_coordinates(node, device)
+        return id_
+    
+    def add_prefix(prefix: Prefix) -> str:
+        id_ = f'prefix_{prefix.pk}'
+        node = {
+            'id': f'prefix_{prefix.pk}',
+            'netbox_id': prefix.pk,
+            'n_edges': 0,
+            'name': str(prefix.prefix),
+            'type': 'prefix',
+            'shape': SHAPES['Prefix'],
+            'color': COLORS['Prefix'],
+            'size': 5,
+            'font': {
+                'color': 'black'
+            }
+        }
+        nodes[id_] = add_coordinates(node, prefix)
+        return id_
+    
+    def add_edge(vlan: VLAN, point_1_id: str, point_2_id: str):
+        edges.append({
+            'vid': vlan.vid,
+            'name': vlan.name,
+            'from': point_1_id,
+            'to': point_2_id,
+            'color': random_color(vlan.vid),
+            'type': 'link'
+        })
+        nodes[point_1_id]['n_edges'] += 1
+        nodes[point_2_id]['n_edges'] += 1
         pass
+    vlans = cast(List[VLAN], [ vlan for vlan in VLAN.objects.all() ])
+    for vlan in vlans:
+        prefixes = cast(List[Prefix], list(Prefix.objects.filter(vlan=vlan).all()))
+        if len(prefixes) != 1:
+            # WARN: prefixes should have length equal to one
+            logger.warn(f'Prefix for vlan ({vlan.vid}) has {len(prefixes)} length')
+            continue
+        prefix = prefixes[0]
+        ips = cast(List[IPAddress], list(prefix.get_child_ips().all()))
 
-    @property
-    def interfaces(self) -> List[Interface]:
-        return [ ifc for ifc in self.vlan.get_interfaces().all() ]
-        
-    @property
-    def ips(self) -> List[IPAddress]:
-        return [ ip for ifc in self.interfaces for ip in ifc.ip_addresses.all() ]
+        devices = [ get_device_ip(ip) for ip in ips ]
+        devices = [ device for device in devices if device is not None ]
 
-    @property
-    def prefixes(self) -> List[Prefix]:
-        return [ cast(Prefix, get_parent_prefix(ip)) for ip in self.ips if get_parent_prefix(ip) is not None ]
+        ids = [ add_prefix(prefix) ] + [ add_device(device) for device in devices ]
 
-    @property
-    def routewalls(self) -> List[Prefix]:
-        return [ cast(Prefix, get_parent_prefix(ip)) for ip in self.ips if get_parent_prefix(ip) is not None ]
+        ids2 = ids.copy()
+        for id1 in ids:
+            ids2.remove(id1)
+            for id2 in ids2:
+                add_edge(vlan, id1, id2)
 
-    def nodes(self):
-        COLORS = { 'Router': 'blue', 'Firewall': 'red', 'Prefix': 'grey'}
-        SHAPES = { 'Router': 'hexagon', 'Firewall': 'hexagon', 'Prefix': 'circle'}
-        def add_device(device: Device):
-            return {
-                'id': f'device_{device.pk}',
-                'name': device.name,
-                'label': device.name,
-                'shape': SHAPES[device.device_role.name],
-                'color': COLORS[device.device_role.name],
-                'size': 20,
-                'font': {
-                    'color': 'black'
-                }
-            }
-        def add_prefix(prefix: Prefix):
-            return {
-                'id': f'prefix_{prefix.pk}',
-                'name': str(prefix.prefix),
-                'label': str(prefix.prefix),
-                'shape': SHAPES['Prefix'],
-                'color': COLORS['Prefix'],
-                'size': 20,
-                'font': {
-                    'color': 'black'
-                }
-            }
-        def add_edge(vlan: VLAN, point_1: str, point_2: str):
-            return {
-                'vid': vlan.vid,
-                'name': vlan.name,
-                'from': point_1,
-                'to': point_2,
-                'color': random_color(vlan.vid),
-                'type': 'link'
-            }
-        nodes = {}
-        edges = []
-        vlans = cast(List[VLAN], [ vlan for vlan in VLAN.objects.all() ])
-        for vlan in vlans:
-            interfaces = cast(List[Interface], vlan.get_interfaces())
-            prefixes = cast(List[Prefix], list(Prefix.objects.filter(vlan=vlan).all()))
-            if len(prefixes) == 0 or len(prefixes) > 1:
-                # WARN: prefixes should have length equal to one
-                logger.warn(f'Prefix for vlan ({vlan.vid}) has {len(prefixes)} length')
-                continue
-            _from_ = None
-            _to_ = None
-            prefix = prefixes[0]
+        if False:
             if prefix.prefix.prefixlen == 30:
                 # punto-punto
-                ips = cast(List[IPAddress], list(prefix.get_child_ips().all()))
                 if len(ips) != 2:
                     # WARN: ips should have length equal to 2
                     logger.warn(f'Child IPs of "punto-punto" prefix must be of length 2.')
                     continue
+
+                get_device_ip(ips[0])
+                get_device_ip(ips[1])
 
                 point_1_type = ips[0].assigned_object_type
                 point_2_type = ips[1].assigned_object_type
@@ -137,131 +171,64 @@ class Edge():
 
                 point_1 = ips[0].assigned_object
                 if point_1_type.model == 'device':
-                    add_device(cast(Device, point_1))
+                    point_1 = cast(Device, point_1)
+                    point_1_id = add_device(cast(Device, point_1))
+                    logger.warn(f'Point 1 is {point_1_type.model} with role {point_1.device_role}.')
                 elif point_1_type.model == 'prefix':
-                    add_prefix(cast(Prefix, point_1))
+                    point_1_id = add_prefix(cast(Prefix, point_1))
                     logger.warn(f'Point 1 type is not device or prefix but {point_1_type.model}.')
-                    pass
-
-                point_2 = ips[1].assigned_object
-                if point_2_type.model == 'device':
-                    add_device(cast(Device, point_2))
-                elif point_2_type.model == 'prefix':
-                    add_prefix(cast(Prefix, point_2))
                 else:
-                    logger.warn(f'Point 2 type is not device or prefix but {point_2_type.model}.')
-                    pass
-                add_edge(point_1, point_2)
+                    logger.warn(f'Point 1 type is not device or prefix but {point_1_type.model}.')
+                    continue
+
+                point_2 = ips[0].assigned_object
+                if point_2_type.model == 'device':
+                    point_2 = cast(Device, point_2)
+                    point_2_id = add_device(cast(Device, point_2))
+                    logger.warn(f'Point 1 is {point_2_type.model} with role {point_2.device_role}.')
+                elif point_2_type.model == 'prefix':
+                    point_2_id = add_prefix(cast(Prefix, point_2))
+                    logger.warn(f'Point 1 type is not device or prefix but {point_2_type.model}.')
+                else:
+                    logger.warn(f'Point 1 type is not device or prefix but {point_2_type.model}.')
+                    continue
+                add_edge(vlan, point_1_id, point_2_id) # type: ignore
             elif prefix and prefix.prefix.prefixlen < 30:
+                """
+                All'interno della VLAN x è presente il PREFIX y, se y ha più di 2 indirizzi allora
+                uno dovrebbe essere il firewall che rappresenterebbe il gateway di quel pool
+                """
                 ips = cast(List[IPAddress], [ ip for ip in prefix.get_child_ips() ])
                 devices = [ cast(Device, ip.assigned_object) for ip in ips if ip.assigned_object_type and  ip.assigned_object_type.model == 'device' ]
                 firewalls = [ device for device in devices if device.device_role.name == 'Firewall']
-                if len(firewalls) == 0 and len(firewalls) > 1:
+                if len(firewalls) != 1:
                     logger.warn(f'Firewalls inside prefix ({prefix.prefix}) are not one but {len(firewalls)}.')
                     continue
                 firewall = firewalls[0]
                 
-                _from_ = f"device_{firewall.pk}"
-                nodes[_from_] = {
-                    'id': _from_,
-                    'name': firewall.name,
-                    'label': firewall.name,
-                    'shape': SHAPES['Firewall'],
-                    'color': COLORS['Firewall'],
-                    'size': 20,
-                    'font': {
-                        'color': 'black'
-                    }
-                }
-                _to_ = f"prefix_{prefix.pk}"
-                nodes[_to_] = {
-                    'id': _to_,
-                    'name': str(prefix.prefix),
-                    'label': str(prefix.prefix),
-                    'shape': SHAPES['Prefix'],
-                    'color': COLORS['Prefix'],
-                    'size': 20,
-                    'font': {
-                        'color': 'black'
-                    }
-                }
-
-                if all( ip.assigned_object for ip in ips ):
-                # punto-punto
-                # len(ips) == 2
-                device = ips[0].assigned_object
-                device = ips[0].assigned_object
-                pass 
-            edge = {
-                'vid': vlan.vid,
-                'name': vlan.name,
-                'from': _from_,
-                'to': _to_,
-                'color': random_color(vlan.vid),
-                'type': 'link'
-            }
-
-
-
-class Node():
-
-    COLOR = { 'routers': 'blue', 'firewalls': 'red'},
-    def __init__(self, device: Device) -> None:
-        self.device = device
-        pass
-
-    @property
-    def type(self) -> str:
-        return self.device.device_role.name
-
-    @property
-    def interfaces(self) -> List[Interface]:
-        return cast(List[Interface], [ i for i in self.device.vc_interfaces() ])
-
-    @property
-    def ips(self) -> List[IPAddress]:
-        return [ ip for i in self.interfaces if i.untagged_vlan is not None for ip in cast(List[IPAddress], i.ip_addresses.all())]
-
-    @property
-    def prefixes(self) -> List[Prefix]:
-        return [ cast(Prefix, get_parent_prefix(ip)) for ip in self.ips if get_parent_prefix(ip) is not None ]
-
-    @property
-    def vlan_edges(self):
-        edges = {}
-        for ifc in self.interfaces:
-            if ifc.untagged_vlan is  None: continue
-            for ip in ifc.ip_addresses.all():
-                prefix = get_parent_prefix(ip)
-                edges[ifc.untagged_vlan.id]({
-                    'interface': ifc,
-                    'vlan': ifc.untagged_vlan,
-                    'ip': ip,
-                    'prefix': prefix
+                firewall_id = add_device(firewall)
+                prefix_id = add_prefix(prefix)
+                edges.append({
+                    'vid': vlan.vid,
+                    'name': vlan.name,
+                    'from': firewall_id,
+                    'to': prefix_id,
+                    'color': random_color(vlan.vid),
+                    'type': 'link'
                 })
                 pass
-            pass
+            pass # vlan for
         pass
+    
+    logger.debug(nodes)
+    s = '\n'.join([ f"{edge['from']} -> {edge['to']}" for edge in edges ])
+    logger.debug(s)
 
+    for node_id in nodes:
+        if nodes[node_id]['n_edges'] == 0:
+            nodes[node_id]['physics'] = False
 
-    @property
-    def vlans(self) -> List[VLAN]:
-        return cast(List[VLAN], [ i.untagged_vlan for i in self.interfaces if i.untagged_vlan is not None])
-
-    def json(self):
-        d = self.device
-        return {
-            'id': d.pk,
-            'name': d.name,
-            'label': d.name,
-            'shape': 'hexagon',
-            'color': self.COLOR[d.device_role.name],
-            'size': 20,
-            'font': {
-                'color': 'black'
-            }
-        }
-
+    return dict(nodes=nodes, edges=edges)
 
 def create_node(device, save_coords, circuit = None, powerpanel = None, powerfeed= None):
 
@@ -400,7 +367,7 @@ def create_circuit_termination(termination):
         return { "termination_name": termination.name, "termination_device_name": termination.device.name, "device_id": termination.device.id }
     return None
 
-def get_topology_data(queryset, hide_unconnected, save_coords, show_circuit, show_power):
+def get_topology_data(queryset, hide_unconnected, save_coords, use_coordinates, show_circuit, show_power):
     nodes_devices = {}
     edges = []
     nodes = []
@@ -566,15 +533,7 @@ def get_topology_data(queryset, hide_unconnected, save_coords, show_circuit, sho
     results["edges"] = edges
     return results
 
-def get_routers_and_firewall(topo_data):
-    """
-    Nodes are:
-     - routers
-     - firewalls
-     - prefixes
-    Edges are:
-     - VLAN (for now)
-    """
+def get_routers_and_firewall(topo_data, use_coordinates):
     roles = DeviceRole.objects.all()
     filterset = DeviceRoleFilterSet
     router_role = filterset( {'name': ['Router']}, roles).qs[0]
@@ -582,29 +541,6 @@ def get_routers_and_firewall(topo_data):
 
     routers = Device.objects.filter(device_role_id=router_role.id)
     firewalls = Device.objects.filter(device_role_id=firewall_role.id)
-    
-    def get_parent_prefixes(ip: IPAddress):
-        return [
-            { 'name': str(p), 'utilization': round(p.get_utilization(), 2) }
-            for p in Prefix.objects.filter(
-                vrf=ip.vrf,
-                prefix__net_contains_or_equals=str(ip.address.ip)
-            )
-        ]
-    
-    for type_device in devices:
-        for device in devices[type_device]:
-            interfaces = cast(List[Interface], [ i for i in device.vc_interfaces() ])
-            __interfaces = []
-            if len(interfaces) > 0:
-                __interfaces = [{
-                        'vlan': str(i.untagged_vlan),
-                        'prefixes': get_parent_prefixes(ip)
-                    }
-                    for i in device.vc_interfaces() if i.untagged_vlan is not None for ip in i.ip_addresses.all()
-                ]
-
-
 
     devices = {
         'routers': cast(List[Device], routers),
@@ -620,22 +556,11 @@ def get_routers_and_firewall(topo_data):
 
     for type_device in devices:
         for device in devices[type_device]:
-            interfaces = cast(List[Interface], [ i for i in device.vc_interfaces() ])
-            __interfaces = []
-            if len(interfaces) > 0:
-                __interfaces = [{
-                    'vlan': str(i.untagged_vlan),
-                    'prefixes': get_parent_prefixes(ip)
-                }
-                    for i in device.vc_interfaces() if i.untagged_vlan is not None for ip in i.ip_addresses.all()
-                ]
-
-            device_vlans = cast(List[VLAN], [ i.untagged_vlan for i in interfaces if i.untagged_vlan is not None])
+            device_vlans = cast(List[VLAN], [ i.untagged_vlan for i in device.vc_interfaces() if i.untagged_vlan is not None])
             __device = {
                 'id': device.id,
                 'name': device.name,
                 'label': device.name,
-                'interaces': __interfaces,
                 'vlans': [ vlan.name for vlan in device_vlans ],
                 'shape': 'hexagon',
                 'color': { 'routers': 'blue', 'firewalls': 'red'}[type_device],
@@ -657,27 +582,12 @@ def get_routers_and_firewall(topo_data):
                     __vlans[vlan.name] = []
                 __vlans[vlan.name].append(__device)
 
-            pass
-        pass
-
-    # logger.debug(__devices)
-
-    ### Get Prefixes with Routers
-    ### Get Prefixes with Routers
-    ### Get Prefixes with Routers
-
-    prefixes = Prefix.objects.all()
-    prefix_children = ([
-        [str(p), str(ip.address), str(ip.status), str(ip.assigned_object)] for p in prefixes for ip in p.get_child_ips()
-    ])
-    logger.debug([
-        [str(p), str(ip.address), str(ip.status), str(ip.assigned_object), ip.description ] for p in prefixes for ip in p.get_child_ips()
-    ])
-
-    ### Get Prefixes with Routers
-    ### Get Prefixes with Routers
-    ### Get Prefixes with Routers
-
+    def random_color():
+        import random
+        r = random.randint(0,255)
+        g = random.randint(0,255)
+        b = random.randint(0,255)
+        return f'rgb({r}, {g}, {b})'
 
     vlan_colors = { vlan_name: random_color() for vlan_name in __vlans }
 
@@ -702,17 +612,21 @@ def get_routers_and_firewall(topo_data):
     if topo_data is None:
         topo_data = {}
 
+
+
     topo_data['devices_all'] = __devices["firewalls"] + __devices['routers']
     topo_data['devices'] = __devices
     topo_data['vlans'] = __vlans
     topo_data['vlan_edges'] = vlan_edges
     topo_data['vlan_colors'] = vlan_colors
 
+    data = nodes(use_coordinates)
 
+    topo_data['nodes2'] = [ data['nodes'][id_] for id_ in data['nodes'] ]
+    topo_data['edges2'] = data['edges']
 
-
-    
     pass
+
 
 class TopologyHomeView(PermissionRequiredMixin, View):
     permission_required = ("dcim.view_site", "dcim.view_device")
@@ -725,12 +639,18 @@ class TopologyHomeView(PermissionRequiredMixin, View):
         self.queryset = Device.objects.all().select_related("device_type", "device_role")
         self.queryset = self.filterset(request.GET, self.queryset).qs
         topo_data = None
+        use_coordinates = True
 
         if request.GET:
             save_coords = False
             if 'save_coords' in request.GET:
                 if request.GET["save_coords"] == "on":
                     save_coords = True
+
+            use_coordinates = False
+            if 'use_coordinates' in request.GET:
+                if request.GET["use_coordinates"] == "on":
+                    use_coordinates = True
                     
             hide_unconnected = False
             if "hide_unconnected" in request.GET:
@@ -751,7 +671,7 @@ class TopologyHomeView(PermissionRequiredMixin, View):
                 if request.GET["draw_init"].lower() == "true":
                     topo_data = get_topology_data(self.queryset, hide_unconnected, save_coords, show_circuit, show_power)
             else:
-                topo_data = get_topology_data(self.queryset, hide_unconnected, save_coords,  show_circuit, show_power)
+                topo_data = get_topology_data(self.queryset, hide_unconnected, save_coords, use_coordinates,  show_circuit, show_power)
         else:
             preselected_device_roles = settings.PLUGINS_CONFIG["netbox_topology_views"]["preselected_device_roles"]
             preselected_tags = settings.PLUGINS_CONFIG["netbox_topology_views"]["preselected_tags"]
@@ -769,10 +689,11 @@ class TopologyHomeView(PermissionRequiredMixin, View):
             query_string = q.urlencode()
             return HttpResponseRedirect(request.path + "?" + query_string)
 
-        get_routers_and_firewall(topo_data)
+        get_routers_and_firewall(topo_data, use_coordinates)
 
         return render(request, "netbox_topology_views/index.html" , {
                 "filter_form": DeviceFilterForm(request.GET, label_suffix=""),
-                "topology_data": json.dumps(topo_data)
+                "topology_data": json.dumps(topo_data),
+                'use_coordinates': json.dumps(use_coordinates)
             }
         )

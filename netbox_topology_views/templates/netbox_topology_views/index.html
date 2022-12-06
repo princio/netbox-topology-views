@@ -18,7 +18,9 @@
 			{% block extra_controls %}{% endblock %}
 			<a id="btnDownloadImage" class="btn btn-sm btn-info" href="#">
 				<i class="mdi mdi-download">Download</i>
-				
+			</a>
+			<a id="btnCoo" class="btn btn-sm btn-info" href="#" data-on="true">
+				Save all coordinates
 			</a>
 			<a id="btnPhysics" class="btn btn-sm btn-info" href="#" data-on="true">
 				Physics is On
@@ -60,6 +62,7 @@
         </div>
 
         <script type="text/javascript">
+          const useCoordinates = {{ use_coordinates | safe }};
           var topology_data = {{ topology_data | safe }};
         </script>
       </div>

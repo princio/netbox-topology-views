@@ -8,14 +8,15 @@ from .serializers import TopologyDummySerializer
 from django.conf import settings
 
 from dcim.models import  DeviceRole, Device, Cable , PowerPanel,  PowerFeed
+from ipam.models import Prefix
 from circuits.models import Circuit
 from extras.models import Tag
 
+from typing import cast, Union
 
 class TopologyViewsRootView(APIRootView):
     def get_view_name(self):
         return 'TopologyViews'
-
 
 class SaveCoordsViewSet(ReadOnlyModelViewSet):
     queryset = Device.objects.all()
@@ -28,27 +29,23 @@ class SaveCoordsViewSet(ReadOnlyModelViewSet):
             device_id = None
             x_coord = None
             y_coord = None
-            if "node_id" in request.data:
-                if request.data["node_id"]:
-                    device_id = request.data["node_id"]
-            if "x" in request.data:
-                if request.data["x"]:
-                    x_coord = request.data["x"]
-            if "y" in request.data:
-                if request.data["y"]:
-                    y_coord = request.data["y"]
+            if not ("netbox_id" in request.data and "x" in request.data and "y" in request.data):
+                request.data['status'] = 'netbox_id,x or y undefined'
+                return Response(request.data, status=500)
             
-            if device_id.startswith("c"):
-                device_id = device_id.lstrip('c')
-                actual_device= Circuit.objects.get(id=device_id)
-            elif device_id.startswith("p"):
-                device_id = device_id.lstrip('p')
-                actual_device= PowerPanel.objects.get(id=device_id)
-            elif device_id.startswith("f"):
-                device_id = device_id.lstrip('f')
-                actual_device= PowerFeed.objects.get(id=device_id)
+            netbox_id = request.data["netbox_id"]
+            x_coord = request.data["x"]
+            y_coord = request.data["y"]
+            
+            if request.data['type'] == 'device':
+                actual_device= Device.objects.get(pk=netbox_id)
+            elif request.data['type'] == 'prefix':
+                actual_device= Prefix.objects.get(pk=netbox_id)
             else:
-                actual_device= Device.objects.get(id=device_id)
+                request.data['status'] = 'Unknown type'
+                return Response(request.data, status=500)
+            
+            actual_device = cast(Union[Device, Prefix], actual_device)
 
             if "coordinates" in actual_device.custom_field_data:
                 actual_device.custom_field_data["coordinates"] = "%s;%s" % (x_coord,y_coord)
