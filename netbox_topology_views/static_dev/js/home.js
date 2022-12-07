@@ -8,6 +8,7 @@ var container = null;
 var downloadButton = null;
 var fitButton = null;
 var physicsButton = null;
+var clusterButton = null;
 const MIME_TYPE = "image/png";
 var canvas = null;
 var csrftoken = null;
@@ -114,6 +115,7 @@ export function iniPlotboxIndex() {
     physicsButton = document.getElementById('btnPhysics');
     fitButton = document.getElementById('btnFit');
     cooButton = document.getElementById('btnCoo');
+    clusterButton = document.getElementById('btnCluster');
     handleLoadData();
     btnFullView = document.getElementById('btnFullView');
     coord_save_checkbox = document.getElementById('id_save_coords');
@@ -195,15 +197,16 @@ export function handleLoadData() {
         
         physicsButton.onclick = function(e) {
             if( physicsButton.dataset.on == 'true') {
-                console.log('true-btn: ' + physicsButton.dataset.on);
                 graph.setOptions({ physics: false });
-                physicsButton.dataset.on = 'false'
-                physicsButton.setHTML('Physics is Off')
+                physicsButton.dataset.on = 'false';
+                physicsButton.setHTML('Physics is Off');
                 physics_enabled = false;
+                nodes.forEach((n) => { n.physics = false });
             }
             else {
-                console.log('false-btn: ' + physicsButton.dataset.on);
-                graph.setOptions({ physics: physics });
+                nodes.forEach((n) => { n.physics = true });
+                graph.setData({ nodes, edges });
+                graph.setOptions({ physics: true });
                 physicsButton.dataset.on = 'true'
                 physicsButton.setHTML('Physics is On')
                 physics_enabled = true;
@@ -211,6 +214,48 @@ export function handleLoadData() {
 
             return false;
         };
+        
+        clusterButton.onclick = function(e) {
+            nodes.forEach((node) => {
+                if (node.type !== 'device') return;
+                const prefixes = nodes.map((n2) => n2.name, { filter: (n2) => n2.cluster && n2.cluster === node.id });
+                graph.cluster({
+                    joinCondition: (parentNodeOptions) => {
+                        const toCluster = parentNodeOptions.cluster && parentNodeOptions.cluster === node.id;
+                        return toCluster;
+                    },
+                    clusterNodeProperties: {
+                        id: "cidCluster_" + node.id,
+                        borderWidth: 3,
+                        shape: "database",
+                        title: htmlTitle(prefixes.join('<br/>'))
+                    },
+                })
+            });
+            
+            const prefixes = nodes.map((n2) => n2.name, { filter: (n2) => n2.type === 'prefix' && n2.n_edges === 0 });
+            graph.cluster({
+                joinCondition: (parentNodeOptions) => {
+                    return parentNodeOptions.type === 'prefix' && parentNodeOptions.n_edges === 0;
+                },
+                clusterNodeProperties: {
+                    id: "cidCluster_orphans",
+                    borderWidth: 3,
+                    color: 'pink',
+                    label: 'orphans',
+                    shape: "database",
+                    title: htmlTitle(prefixes.join('<br/>'))
+                },
+            });
+        }
+
+        graph.on("selectNode", function (params) {
+            if (params.nodes.length == 1) {
+              if (graph.isCluster(params.nodes[0]) == true) {
+                graph.openCluster(params.nodes[0]);
+              }
+            }
+          });
 
         graph.on("dragStart", function (params) {
             for (const edge of params.edges) {

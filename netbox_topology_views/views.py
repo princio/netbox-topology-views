@@ -226,6 +226,20 @@ def nodes(use_coordinates):
     s = '\n'.join([ f"{edge['from']} -> {edge['to']}" for edge in edges ])
     logger.debug(s)
 
+
+    groups = {}
+    for edge in edges:
+        if nodes[edge['from']]['type'] == 'device' and nodes[edge['to']]['type'] == 'prefix':
+            device = nodes[edge['from']]
+            prefix = nodes[edge['to']]
+        elif nodes[edge['to']]['type'] == 'device' and nodes[edge['from']]['type'] == 'prefix':
+            device = nodes[edge['to']]
+            prefix = nodes[edge['from']]
+        else:
+            continue
+        if prefix['n_edges'] > 1: continue
+        nodes[prefix['id']]['cluster'] = device['id']
+    
     for node_id in nodes:
         if nodes[node_id]['n_edges'] == 0:
             nodes[node_id]['physics'] = False
