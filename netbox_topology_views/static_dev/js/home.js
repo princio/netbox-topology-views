@@ -218,7 +218,12 @@ export function handleLoadData() {
         clusterButton.onclick = function(e) {
             nodes.forEach((node) => {
                 if (node.type !== 'device') return;
-                const prefixes = nodes.map((n2) => n2.name, { filter: (n2) => n2.cluster && n2.cluster === node.id });
+                const prefixes = nodes.map((n2) => n2, { filter: (n2) => n2.cluster && n2.cluster === node.id });
+                const edges2 = [];
+                for (const pr of prefixes) {
+                    edges2.push(edges.map((edge) => `${edge.vid}`, { filter: (e) => e.from === pr.id || e.to === pr.id }));
+                }
+                console.log(edges2);
                 graph.cluster({
                     joinCondition: (parentNodeOptions) => {
                         const toCluster = parentNodeOptions.cluster && parentNodeOptions.cluster === node.id;
@@ -228,7 +233,12 @@ export function handleLoadData() {
                         id: "cidCluster_" + node.id,
                         borderWidth: 3,
                         shape: "database",
-                        title: htmlTitle(prefixes.join('<br/>'))
+                        title: htmlTitle(prefixes.map((n2) => n2.name).join('<br/>'))
+                    },
+                    clusterEdgeProperties: {
+                        id: "cidClusterEdge_" + node.id,
+                        label: `#${edges2.length}`,
+                        title: htmlTitle(edges2.join('<br/>'))
                     },
                 })
             });
@@ -248,14 +258,6 @@ export function handleLoadData() {
                 },
             });
         }
-
-        graph.on("selectNode", function (params) {
-            if (params.nodes.length == 1) {
-              if (graph.isCluster(params.nodes[0]) == true) {
-                graph.openCluster(params.nodes[0]);
-              }
-            }
-          });
 
         graph.on("dragStart", function (params) {
             for (const edge of params.edges) {
@@ -312,6 +314,13 @@ export function handleLoadData() {
         });
 
         graph.on("doubleClick", function (params) {
+            
+            if (params.nodes.length == 1) {
+                if (graph.isCluster(params.nodes[0]) == true) {
+                  graph.openCluster(params.nodes[0]);
+                }
+                return;
+              }
             let selected_devices = params.nodes;
             for (let selected_device in selected_devices) {
                 let url = ""
